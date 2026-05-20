@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 type Phase = 'idle' | 'maze' | 'search' | 'done';
-type Algo = 'BFS' | 'DFS';
-type MazeType = 'spiral' | 'random' | 'empty';
-type Speed = 'Slow' | 'Medium' | 'Fast';
+type Algo = 'BFS';
+type MazeType = 'spiral';
+type Speed = 'Slow' | 'Fast';
 type CellPos = [number, number];
 
 type Styles = {
@@ -32,7 +32,6 @@ const COLS = 31;
 
 const SPEEDS: Record<Speed, { maze: number; search: number }> = {
     Slow: { maze: 12, search: 60 },
-    Medium: { maze: 4, search: 20 },
     Fast: { maze: 1, search: 3 },
 };
 
@@ -63,27 +62,7 @@ function spiralWallOrder(): CellPos[] {
     return walls.filter(([r, c]) => !(r === m && Math.abs(c - m) <= 1));
 }
 
-function randomWallOrder(
-    sR: number,
-    sC: number,
-    tR: number,
-    tC: number,
-): CellPos[] {
-    const walls: CellPos[] = [];
-    for (let r = 0; r < ROWS; r++)
-        for (let c = 0; c < COLS; c++)
-            if (
-                !(r === sR && c === sC) &&
-                !(r === tR && c === tC) &&
-                Math.random() < 0.28
-            )
-                walls.push([r, c]);
-    for (let i = walls.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [walls[i], walls[j]] = [walls[j], walls[i]];
-    }
-    return walls;
-}
+// random walls removed — only spiral maze supported
 
 const nbrs = (r: number, c: number): CellPos[] => [
     [r - 1, c],
@@ -117,7 +96,7 @@ export default function App() {
     const [phase, setPhase] = useState<Phase>('idle');
     const [algo, setAlgo] = useState<Algo>('BFS');
     const [mazeType, setMazeType] = useState<MazeType>('spiral');
-    const [speed, setSpeed] = useState<Speed>('Medium');
+    const [speed, setSpeed] = useState<Speed>('Slow');
     const [toast, setToast] = useState('');
     const [pathLen, setPathLen] = useState(0);
     const [algoOpen, setAlgoOpen] = useState(false);
@@ -179,25 +158,13 @@ export default function App() {
             Array(COLS).fill(false),
         );
 
-        if (mazeType === 'empty') {
-            const base = freshStates();
-            setCellStates(base);
-            setPhase('search');
-            setToast(`Running ${algo}…`);
-            runSearch(wallGrid, base, ms.search);
-            return;
-        }
-
-        // Phase 1: animate maze
+        // Phase 1: animate spiral maze
         setPhase('maze');
         setToast('Generating maze…');
         const base = freshStates();
         setCellStates(base);
 
-        const wallOrder: CellPos[] =
-            mazeType === 'spiral'
-                ? spiralWallOrder()
-                : randomWallOrder(START.r, START.c, TGT.r, TGT.c);
+        const wallOrder: CellPos[] = spiralWallOrder();
 
         // Pre-compute final wall layout
         for (const [r, c] of wallOrder) wallGrid[r][c] = true;
@@ -237,39 +204,19 @@ export default function App() {
 
         seen[START.r][START.c] = 1;
 
-        if (algo === 'BFS') {
-            // Standard BFS — guarantees shortest path
-            const queue = [[START.r, START.c]];
-            let head = 0;
-            while (head < queue.length) {
-                const [r, c] = queue[head++];
-                visitOrder.push([r, c]);
-                if (r === TGT.r && c === TGT.c) break;
-                for (const [nr, nc] of nbrs(r, c)) {
-                    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
-                    if (seen[nr][nc] || wallGrid[nr][nc]) continue;
-                    seen[nr][nc] = 1;
-                    prev[nr * COLS + nc] = r * COLS + c;
-                    queue.push([nr, nc]);
-                }
-            }
-        } else {
-            // DFS
-            const stack: CellPos[] = [[START.r, START.c]];
-            while (stack.length) {
-                const item = stack.pop();
-                if (!item) break;
-                const [r, c] = item;
-                if (seen[r][c]) continue;
-                seen[r][c] = 1;
-                visitOrder.push([r, c]);
-                if (r === TGT.r && c === TGT.c) break;
-                for (const [nr, nc] of nbrs(r, c)) {
-                    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
-                    if (seen[nr][nc] || wallGrid[nr][nc]) continue;
-                    prev[nr * COLS + nc] = r * COLS + c;
-                    stack.push([nr, nc]);
-                }
+        // Standard BFS — guarantees shortest path
+        const queue = [[START.r, START.c]];
+        let head = 0;
+        while (head < queue.length) {
+            const [r, c] = queue[head++];
+            visitOrder.push([r, c]);
+            if (r === TGT.r && c === TGT.c) break;
+            for (const [nr, nc] of nbrs(r, c)) {
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+                if (seen[nr][nc] || wallGrid[nr][nc]) continue;
+                seen[nr][nc] = 1;
+                prev[nr * COLS + nc] = r * COLS + c;
+                queue.push([nr, nc]);
             }
         }
 
@@ -372,24 +319,17 @@ export default function App() {
                 ? 'Run Again'
                 : 'Start';
 
-    const algoOptions: { id: Algo; label: string; desc: string }[] = [
+    const algoOptions: { id: Algo; label: string; desc?: string }[] = [
         {
             id: 'BFS',
             label: 'BFS — Shortest path guaranteed',
             desc: 'Explores layer by layer',
         },
-        {
-            id: 'DFS',
-            label: 'DFS — Explores deep first',
-            desc: 'Not necessarily shortest',
-        },
     ];
     const mazeOptions: { id: MazeType; label: string }[] = [
         { id: 'spiral', label: 'Simple Spiral' },
-        { id: 'random', label: 'Random Walls' },
-        { id: 'empty', label: 'Empty Grid' },
     ];
-    const speedOptions: Speed[] = ['Slow', 'Medium', 'Fast'];
+    const speedOptions: Speed[] = ['Slow', 'Fast'];
 
     const styles: Styles = {
         nav: {
